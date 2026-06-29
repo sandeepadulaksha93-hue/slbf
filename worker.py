@@ -28,7 +28,7 @@ except ImportError:
     sys.exit(1)
 
 # ── Config ─────────────────────────────────────────────────────
-MASTER_URL    = "MASTER_URL_PLACEHOLDER"
+MASTER_URL    = "https://interfrontal-inexpressibly-verla.ngrok-free.dev"
 WORKER_ID     = socket.gethostname()
 PAGE_URL      = "https://services.slbfe.lk/Israel/WebPortal"
 SUBMIT_URL    = "https://services.slbfe.lk/Israel/SubmitData"
