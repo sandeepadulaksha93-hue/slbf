@@ -37,6 +37,9 @@ jobs:
             --hidden-import=selenium.webdriver.support.expected_conditions `
             --hidden-import=webdriver_manager `
             --hidden-import=webdriver_manager.chrome `
+            --hidden-import=webdriver_manager.core `
+            --hidden-import=webdriver_manager.core.os_manager `
+            --hidden-import=webdriver_manager.core.driver_cache `
             --collect-all selenium `
             --collect-all webdriver_manager `
             worker.py
