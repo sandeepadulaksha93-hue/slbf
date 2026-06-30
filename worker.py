@@ -36,14 +36,36 @@ RECAPTCHA_KEY = "6Le95mgsAAAAAMSHb9YdMAuwE2Mo6uQ9ETT4lqfB"
 POLL_INTERVAL = 5
 
 # ── Logging ────────────────────────────────────────────────────
+def get_safe_log_path():
+    """exe එක run වෙන තැනට log file එක හදනවා - System32 issue fix"""
+    if getattr(sys, "frozen", False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+
+    log_path = os.path.join(base, "worker_log.txt")
+    try:
+        # Write permission test
+        with open(log_path, "a", encoding="utf-8") as f:
+            pass
+        return log_path
+    except (PermissionError, OSError):
+        # Fallback: AppData/Local (always writable)
+        fallback_dir = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "SLBFEWorker")
+        os.makedirs(fallback_dir, exist_ok=True)
+        return os.path.join(fallback_dir, "worker_log.txt")
+
 def setup_logging():
+    log_path = get_safe_log_path()
+    handlers = [logging.StreamHandler(sys.stdout)]
+    try:
+        handlers.insert(0, logging.FileHandler(log_path, encoding="utf-8"))
+    except Exception:
+        pass  # File logging fail වුණත් console logging continue වෙනවා
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
-        handlers=[
-            logging.FileHandler("worker_log.txt", encoding="utf-8"),
-            logging.StreamHandler(sys.stdout),
-        ],
+        handlers=handlers,
     )
 
 # ── Poll Master ────────────────────────────────────────────────
