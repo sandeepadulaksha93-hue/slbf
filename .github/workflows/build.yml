@@ -24,7 +24,22 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --onefile --noconsole --name "SLBFE_Worker" worker.py
+          pyinstaller --onefile --noconsole --name "SLBFE_Worker" `
+            --hidden-import=selenium `
+            --hidden-import=selenium.webdriver `
+            --hidden-import=selenium.webdriver.chrome `
+            --hidden-import=selenium.webdriver.chrome.webdriver `
+            --hidden-import=selenium.webdriver.chrome.options `
+            --hidden-import=selenium.webdriver.chrome.service `
+            --hidden-import=selenium.webdriver.common.by `
+            --hidden-import=selenium.webdriver.support `
+            --hidden-import=selenium.webdriver.support.ui `
+            --hidden-import=selenium.webdriver.support.expected_conditions `
+            --hidden-import=webdriver_manager `
+            --hidden-import=webdriver_manager.chrome `
+            --collect-all selenium `
+            --collect-all webdriver_manager `
+            worker.py
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
