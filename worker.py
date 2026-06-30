@@ -5,7 +5,7 @@ SLBFE Worker v2
 - CSV නෑ — data master එකෙන් pull කරනවා
 - GO signal ආවාම auto submit
 - Result master ට report කරනවා
-"""
+""
 
 import logging
 import os
