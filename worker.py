@@ -92,12 +92,38 @@ def report_result(name, nic, status, ref=""):
     except Exception as e:
         logging.warning(f"Report failed: {e}")
 
-# ── Chrome Driver ──────────────────────────────────────────────
+# ── Chrome Driver (fast + cached) ───────────────────────────────
+_CACHED_DRIVER_PATH = None
+
+def get_chromedriver_path():
+    """ChromeDriver path එක cache කරලා, fresh download එක skip කරනවා"""
+    global _CACHED_DRIVER_PATH
+    if _CACHED_DRIVER_PATH and os.path.exists(_CACHED_DRIVER_PATH):
+        return _CACHED_DRIVER_PATH
+
+    # Persistent cache location (AppData) — exe එක run වෙන location එක මත depend නොවී
+    cache_dir = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "SLBFEWorker", "wdm")
+    os.makedirs(cache_dir, exist_ok=True)
+    os.environ["WDM_LOCAL"] = "1"
+    os.environ["WDM_LOG_LEVEL"] = "0"
+
+    try:
+        from webdriver_manager.chrome import ChromeDriverManager
+        from webdriver_manager.core.os_manager import ChromeType
+        path = ChromeDriverManager(path=cache_dir).install()
+        _CACHED_DRIVER_PATH = path
+        return path
+    except Exception as e:
+        logging.warning(f"webdriver_manager failed: {e} — trying Selenium Manager fallback")
+        return None  # Selenium 4.10+ auto-resolves driver if None
+
 def get_driver():
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-extensions")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
@@ -105,14 +131,18 @@ def get_driver():
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     )
+
+    driver_path = get_chromedriver_path()
     try:
         from selenium.webdriver.chrome.service import Service
-        from webdriver_manager.chrome import ChromeDriverManager
-        return webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()), options=options
-        )
-    except:
-        return webdriver.Chrome(options=options)
+        if driver_path:
+            return webdriver.Chrome(service=Service(driver_path), options=options)
+        else:
+            # Selenium 4.10+ Selenium Manager — built-in driver resolver, no network call needed if cached
+            return webdriver.Chrome(options=options)
+    except Exception as e:
+        logging.error(f"Chrome driver init failed: {e}")
+        raise
 
 # ── reCAPTCHA ──────────────────────────────────────────────────
 def get_recaptcha():
@@ -245,14 +275,33 @@ def submit_application(data):
             try: ref = url.split("Ref%20No%3A%20")[-1].split("&")[0]
             except: pass
 
+        logging.info(f"  HTTP Status: {resp.status_code}")
+        logging.info(f"  Final URL  : {url[:200]}")
+
+        # Debug — response save කරනවා
+        try:
+            base = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
+            with open(os.path.join(base, "last_response.html"), "w", encoding="utf-8") as f:
+                f.write(resp.text)
+        except Exception as e:
+            logging.warning(f"Could not save response: {e}")
+
         if any(w in page for w in ["success","thank","submitted"]):
             logging.info(f"🎉 SUCCESS: {name} | Ref: {ref}")
             report_result(name, data.get("nic",""), "SUCCESS", ref)
         elif "duplicate" in url or "duplicate" in page:
             logging.warning(f"⚠️ DUPLICATE: {name}")
             report_result(name, data.get("nic",""), "DUPLICATE", ref)
+        elif "msg_err" in url:
+            # msg_err URL එකේ ඇත්තටම error message එක තියෙනවා
+            err_msg = ""
+            if "msg=" in url:
+                try: err_msg = url.split("msg=")[-1].split("&")[0]
+                except: pass
+            logging.warning(f"⚠️ SERVER ERROR: {name} | {err_msg}")
+            report_result(name, data.get("nic",""), "FAILED", err_msg[:100])
         else:
-            logging.warning(f"⚠️ UNKNOWN: {name}")
+            logging.warning(f"⚠️ UNKNOWN: {name} — check last_response.html")
             report_result(name, data.get("nic",""), "UNKNOWN")
     except Exception as e:
         logging.error(f"Submit error: {e}")
@@ -283,6 +332,18 @@ def main():
     register_startup()
     submitted = False
     data_assigned = False
+
+    # Pre-warm — ChromeDriver download/cache කරනවා GO signal එනකන් කලින්ම
+    # ඒකෙන් GO click කළ ගමන් submit instant වෙනවා
+    logging.info("🔧 Pre-warming ChromeDriver (one-time setup)...")
+    try:
+        path = get_chromedriver_path()
+        if path:
+            logging.info(f"✅ ChromeDriver ready (cached): {path}")
+        else:
+            logging.info("✅ Selenium Manager will resolve driver on first use")
+    except Exception as e:
+        logging.warning(f"⚠️ Pre-warm failed (will retry on submit): {e}")
 
     logging.info("⏳ Polling master — waiting for data + GO signal...")
 
